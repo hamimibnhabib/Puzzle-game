@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jigsaw Puzzle Game</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f0f0f0;
+            overflow: hidden;
+        }
+        
+        .game-container {
+            display: flex;
+            height: 100vh;
+        }
+        
+        .puzzle-area {
+            flex: 1;
+            position: relative;
+            background-color: #e0e0e0;
+            overflow: hidden;
+        }
+        
+        .sidebar {
+            width: 200px;
+            background-color: #ffffff;
+            box-shadow: -2px 0 5px rgba(0, 0, 0, 0.1);
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .puzzle-piece {
+            position: absolute;
+            cursor: grab;
+            transition: transform 0.1s;
+            background-size: 100% 100%;
+            z-index: 1;
+        }
+        
+        .puzzle-piece.dragging {
+            z-index: 100;
+            cursor: grabbing;
+        }
+        
+        .puzzle-piece.correct {
+            cursor: default;
+            z-index: 0;
+        }
+        
+        .difficulty-selector {
+            margin-bottom: 20px;
+        }
+        
+        .difficulty-selector select {
+            width: 100%;
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        
+        .control-btn {
+            background-color: #4a6ea9;
+            color: white;
+            border: none;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        .control-btn:hover {
+            background-color: #385888;
+        }
+        
+        .preview-container {
+            margin-top: 20px;
+            width: 100%;
+            padding-bottom: 100%;
+            position: relative;
+            border: 1px solid #ccc;
+            overflow: hidden;
+        }
+        
+        .preview-image {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        
+        .timer-container {
+            margin: 20px 0;
+            text-align: center;
+            font-size: 20px;
+            font-weight: bold;
+        }
+        
+        .upload-btn {
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .upload-btn input {
+            position: absolute;
+            top: 0;
+            right: 0;
+            min-width: 100%;
+            min-height: 100%;
+            font-size: 100px;
+            text-align: right;
+            filter: alpha(opacity=0);
+            opacity: 0;
+            outline: none;
+            cursor: pointer;
+            display: block;
+        }
+        
+        .progress-container {
+            margin-top: auto;
+            margin-bottom: 20px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #eee;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .progress {
+            height: 100%;
+            background-color: #4caf50;
+            width: 0;
+            transition: width 0.3s;
+        }
+        
+        .success-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+            display: none;
+        }
+        
+        .success-message h2 {
+            color: #4caf50;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="puzzle-area" id="puzzleArea"></div>
+        <div class="sidebar">
+            <h2>Jigsaw Puzzle</h2>
+            <div class="difficulty-selector">
+                <select id="difficultySelect">
+                    <option value="3">Easy (3x3)</option>
+                    <option value="4" selected>Medium (4x4)</option>
+                    <option value="5">Hard (5x5)</option>
+                    <option value="6">Very Hard (6x6)</option>
+                </select>
+            </div>
+            <button class="control-btn" id="newGameBtn">New Game</button>
+            <button class="control-btn upload-btn">
+                Custom Image
+                <input type="file" id="imageUpload" accept="image/*">
+            </button>
+            <button class="control-btn" id="resetBtn">Reset Puzzle</button>
+            <div class="preview-container">
+                <img id="previewImage" class="preview-image" src="" alt="Puzzle Preview">
+            </div>
+            <div class="timer-container">
+                <div id="timer">00:00</div>
+            </div>
+            <div class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress" id="progressBar"></div>
+                </div>
+                <div id="progressText">0%</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="success-message" id="successMessage">
+        <h2>Puzzle Completed!</h2>
+        <p id="completionTime"></p>
+        <button class="control-btn" id="newGameAfterSuccessBtn">New Game</button>
+    </div>
+
+    <script>
+        // Game variables
+        let puzzleSize = 4; // Default puzzle size (4x4)
+        let pieces = [];
+        let correctPieces = 0;
+        let totalPieces = puzzleSize * puzzleSize;
+        let gameStarted = false;
+        let timerInterval;
+        let startTime;
+        let currentImage = null;
+        
+        // Default images
+        const defaultImages = [
+            'https://images.unsplash.com/photo-1614531341773-3bff8b7cb3fc',
+            'https://images.unsplash.com/photo-1682686578289-cf9c8c472c9b',
+            'https://images.unsplash.com/photo-1518020382113-a7e8fc38eac9',
+            'https://images.unsplash.com/photo-1490730141103-6cac27aaab94',
+            'https://images.unsplash.com/photo-1501785888041-af3ef285b470'
+        ];
+        
+        // DOM Elements
+        const puzzleArea = document.getElementById('puzzleArea');
+        const difficultySelect = document.getElementById('difficultySelect');
+        const newGameBtn = document.getElementById('newGameBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const imageUpload = document.getElementById('imageUpload');
+        const previewImage = document.getElementById('previewImage');
+        const timerElement = document.getElementById('timer');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        const successMessage = document.getElementById('successMessage');
+        const completionTime = document.getElementById('completionTime');
+        const newGameAfterSuccessBtn = document.getElementById('newGameAfterSuccessBtn');
+        
+        // Initialize the game
+        function init() {
+            // Set up event listeners
+            difficultySelect.addEventListener('change', () => {
+                puzzleSize = parseInt(difficultySelect.value);
+                totalPieces = puzzleSize * puzzleSize;
+            });
+            
+            newGameBtn.addEventListener('click', startNewGame);
+            resetBtn.addEventListener('click', resetPuzzle);
+            imageUpload.addEventListener('change', handleImageUpload);
+            newGameAfterSuccessBtn.addEventListener('click', () => {
+                successMessage.style.display = 'none';
+                startNewGame();
+            });
+            
+            // Start with a random image
+            currentImage = defaultImages[Math.floor(Math.random() * defaultImages.length)];
+            previewImage.src = currentImage;
+            
+            // Start a new game
+            startNewGame();
+        }
+        
+        function startNewGame() {
+            // Clear previous game
+            clearInterval(timerInterval);
+            puzzleArea.innerHTML = '';
+            pieces = [];
+            correctPieces = 0;
+            
+            // Update progress
+            updateProgress();
+            
+            // Create new puzzle
+            createPuzzlePieces();
+            
+            // Start timer
+            startTime = new Date();
+            timerInterval = setInterval(updateTimer, 1000);
+            gameStarted = true;
+        }
+        
+        function createPuzzlePieces() {
+            const puzzleWidth = puzzleArea.clientWidth;
+            const puzzleHeight = puzzleArea.clientHeight;
+            
+            // Calculate piece dimensions
+            const pieceWidth = Math.floor(puzzleWidth / puzzleSize);
+            const pieceHeight = Math.floor(puzzleHeight / puzzleSize);
+            
+            // Create each puzzle piece
+            for (let row = 0; row < puzzleSize; row++) {
+                for (let col = 0; col < puzzleSize; col++) {
+                    const piece = document.createElement('div');
+                    piece.className = 'puzzle-piece';
+                    
+                    // Set correct position
+                    const correctLeft = col * pieceWidth;
+                    const correctTop = row * pieceHeight;
+                    
+                    // Set random initial position
+                    const randomLeft = Math.random() * (puzzleWidth - pieceWidth);
+                    const randomTop = Math.random() * (puzzleHeight - pieceHeight);
+                    
+                    // Set piece properties
+                    piece.style.width = `${pieceWidth}px`;
+                    piece.style.height = `${pieceHeight}px`;
+                    piece.style.left = `${randomLeft}px`;
+                    piece.style.top = `${randomTop}px`;
+                    piece.style.backgroundImage = `url(${currentImage})`;
+                    piece.style.backgroundSize = `${puzzleWidth}px ${puzzleHeight}px`;
+                    piece.style.backgroundPosition = `-${correctLeft}px -${correctTop}px`;
+                    
+                    // Store piece data
+                    piece.dataset.row = row;
+                    piece.dataset.col = col;
+                    piece.dataset.correctLeft = correctLeft;
+                    piece.dataset.correctTop = correctTop;
+                    
+                    // Add event listeners for drag and drop
+                    makePieceDraggable(piece);
+                    
+                    // Add to DOM
+                    puzzleArea.appendChild(piece);
+                    pieces.push(piece);
+                }
+            }
+        }
+        
+        function makePieceDraggable(piece) {
+            let offsetX, offsetY, isDragging = false;
+            
+            piece.addEventListener('mousedown', (e) => {
+                if (piece.classList.contains('correct')) return;
+                
+                // Calculate offset from mouse to piece corner
+                const rect = piece.getBoundingClientRect();
+                offsetX = e.clientX - rect.left;
+                offsetY = e.clientY - rect.top;
+                
+                piece.classList.add('dragging');
+                isDragging = true;
+            });
+            
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                
+                // Calculate new position
+                const x = e.clientX - offsetX;
+                const y = e.clientY - offsetY;
+                
+                // Set bounds to keep piece within puzzle area
+                const maxX = puzzleArea.clientWidth - piece.offsetWidth;
+                const maxY = puzzleArea.clientHeight - piece.offsetHeight;
+                
+                piece.style.left = `${Math.max(0, Math.min(maxX, x))}px`;
+                piece.style.top = `${Math.max(0, Math.min(maxY, y))}px`;
+            });
+            
+            document.addEventListener('mouseup', () => {
+                if (!isDragging) return;
+                
+                piece.classList.remove('dragging');
+                isDragging = false;
+                
+                // Check if piece is in correct position
+                checkPiecePosition(piece);
+            });
+        }
+        
+        function checkPiecePosition(piece) {
+            const tolerance = 30; // Snap tolerance in pixels
+            const currentLeft = parseInt(piece.style.left);
+            const currentTop = parseInt(piece.style.top);
+            const correctLeft = parseInt(piece.dataset.correctLeft);
+            const correctTop = parseInt(piece.dataset.correctTop);
+            
+            // Check if piece is close to correct position
+            if (Math.abs(currentLeft - correctLeft) < tolerance && 
+                Math.abs(currentTop - correctTop) < tolerance) {
+                
+                // Snap to correct position
+                piece.style.left = `${correctLeft}px`;
+                piece.style.top = `${correctTop}px`;
+                piece.classList.add('correct');
+                
+                // Update progress if this is a newly correct piece
+                if (!piece.dataset.isCorrect) {
+                    piece.dataset.isCorrect = true;
+                    correctPieces++;
+                    updateProgress();
+                    
+                    // Check if puzzle is complete
+                    if (correctPieces === totalPieces) {
+                        puzzleComplete();
+                    }
+                }
+            }
+        }
+        
+        function updateProgress() {
+            const progress = (correctPieces / totalPieces) * 100;
+            progressBar.style.width = `${progress}%`;
+            progressText.textContent = `${Math.round(progress)}%`;
+        }
+        
+        function resetPuzzle() {
+            if (!gameStarted) return;
+            
+            // Randomly place all pieces again
+            pieces.forEach(piece => {
+                if (piece.classList.contains('correct')) {
+                    piece.classList.remove('correct');
+                    delete piece.dataset.isCorrect;
+                }
+                
+                const randomLeft = Math.random() * (puzzleArea.clientWidth - piece.offsetWidth);
+                const randomTop = Math.random() * (puzzleArea.clientHeight - piece.offsetHeight);
+                
+                piece.style.left = `${randomLeft}px`;
+                piece.style.top = `${randomTop}px`;
+            });
+            
+            // Reset progress
+            correctPieces = 0;
+            updateProgress();
+            
+            // Reset timer
+            clearInterval(timerInterval);
+            startTime = new Date();
+            timerInterval = setInterval(updateTimer, 1000);
+        }
+        
+        function handleImageUpload(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    currentImage = event.target.result;
+                    previewImage.src = currentImage;
+                    startNewGame();
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+        
+        function updateTimer() {
+            const currentTime = new Date();
+            const elapsedSeconds = Math.floor((currentTime - startTime) / 1000);
+            const minutes = Math.floor(elapsedSeconds / 60);
+            const seconds = elapsedSeconds % 60;
+            
+            timerElement.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+        
+        function puzzleComplete() {
+            clearInterval(timerInterval);
+            gameStarted = false;
+            
+            // Show completion message
+            completionTime.textContent = `Time: ${timerElement.textContent}`;
+            successMessage.style.display = 'block';
+        }
+        
+        // Initialize the game when everything is loaded
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
